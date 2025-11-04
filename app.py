@@ -6,13 +6,12 @@ import json
 import atexit
 import signal
 import torch
-import os
 from flask import Flask, request, jsonify, send_file
 from diffusers import StableDiffusionPipeline, StableDiffusionXLPipeline
 from dotenv import load_dotenv
-from pyngrok import ngrok
 import threading
 import time
+import secrets # Import secrets for image file naming
 
 # Force CPU usage and disable CUDA
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
@@ -47,17 +46,13 @@ CONFIG = {
     'MAX_IMAGE_SIZE': 1024
 }
 
-# Initialize Flask app
+# Initialize Flask app (Single initialization, use 'app' variable)
 app = Flask(__name__)
 app.config['JSON_AS_ASCII'] = False  # For proper Arabic text support
 
-# Initialize Flask app
-app = Flask(__name__)
-
 # Load environment variables
-load_dotenv()
 YOUR_API_KEY = os.getenv('AI_SERVER_API_KEY', 'My_Website_Secure_Key_123456')
-# Fix Windows console encoding
+# Fix Windows console encoding (might not be strictly needed on Linux, but harmless)
 if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
@@ -76,29 +71,17 @@ torch.set_grad_enabled(False)
 torch.set_default_tensor_type(torch.FloatTensor)
 DEVICE = 'cpu'
 
-print(f"\n{'='*50}")
-print(f"WORMGPT Server - Running on {DEVICE.upper()}")
-print(f"Python {sys.version.split()[0]} | PyTorch {torch.__version__}")
-print(f"API Key: {'*' * (len(CONFIG['API_KEYS'][0]) - 4) + CONFIG['API_KEYS'][0][-4:] if CONFIG['API_KEYS'][0] else 'Not Set'}")
-print(f"Model Paths: {json.dumps(CONFIG['MODEL_PATHS'], indent=2)}")
-print(f"{'='*50}\n")
-
 # --- استيراد النواة والتبعيات ---
 try:
     from llama_cpp import Llama
-    from diffusers import StableDiffusionPipeline
-    import torch
+    # from diffusers import StableDiffusionPipeline # Already imported at the top
+    # import torch # Already imported at the top
 except ImportError as e:
-    # سيظهر هذا إذا لم ينجح تثبيت llama-cpp-python بعد
     print(f"🚨 خطأ في استيراد المكتبات: {e}")
-    # لن نوقف البرنامج هنا لنتمكن من رؤية الخطأ أثناء التحميل
-    # (لكن يجب حل مشكلة التثبيت ليعمل الكود)
     pass 
 
 # تحميل متغيرات البيئة (مثل مفتاحك السري)
 load_dotenv(".env")
-
-app = Flask(__name__)
 
 # --- متغيرات السرية والمسارات ---
 YOUR_API_KEY = os.environ.get("AI_SERVER_API_KEY")
@@ -129,10 +112,29 @@ def authenticate_request():
         }), 401
     return True, None, None
 
-# --- تحميل النواتين عند بدء تشغيل الخادم ---
-llama_model = None
-sd_pipeline = None
+def cleanup_models():
+    """Clean up model resources properly"""
+    global llama_model, sd_pipeline
+    
+    if llama_model is not None:
+        try:
+            # Simple dereference (llama_cpp should handle its own memory)
+            llama_model = None
+        except Exception as e:
+            print(f"[WARNING] Error cleaning up text model: {e}")
+    
+    if sd_pipeline is not None:
+        try:
+            # Dereference the pipeline object
+            sd_pipeline = None
+            # Aggressively clear PyTorch cache if possible
+            if torch.cuda.is_available():
+                 torch.cuda.empty_cache()
+        except Exception as e:
+            print(f"[WARNING] Error cleaning up image model: {e}")
 
+
+# --- تحميل النواتين عند بدء تشغيل الخادم ---
 def load_ai_cores():
     """Load all AI models with proper error handling"""
     global llama_model, sd_pipeline
@@ -141,6 +143,11 @@ def load_ai_cores():
     
     # Clean up existing models
     cleanup_models()
+    
+    print(f"\n{'='*50}")
+    print(f"WORMGPT Server - Running on {DEVICE.upper()}")
+    print(f"Model Paths: {json.dumps(CONFIG['MODEL_PATHS'], indent=2)}")
+    print(f"{'='*50}\n")
     
     # Load text generation model
     try:
@@ -168,11 +175,6 @@ def load_ai_cores():
             print("[IMAGE] ℹ️  Image generation will be disabled")
             return models_loaded
             
-        # Disable xformers and other potential CUDA dependencies
-        os.environ['DISABLE_TE'] = '1'
-        os.environ['ENABLE_VARIOUS'] = '0'
-        os.environ['ENABLE_CPU_OFFLOAD'] = '0'
-        
         # Configure model loading
         load_kwargs = {
             'torch_dtype': torch.float32,
@@ -200,6 +202,7 @@ def load_ai_cores():
             # Test the model with a simple prompt
             print("[IMAGE] Testing model with simple prompt...")
             with torch.no_grad():
+                # Reduce test size to prevent memory crash during startup
                 test_output = sd_pipeline(
                     prompt="test",
                     num_inference_steps=1,
@@ -218,9 +221,25 @@ def load_ai_cores():
         traceback.print_exc()
         sd_pipeline = None
     
-    return models_loaded  # Return True if at least text model loaded
-    
-    # Load image generation model
+    return models_loaded
+
+
+# Execute model loading once when the module is imported by Gunicorn
+# This replaces the logic that was inside if __name__ == '__main__':
+print("[INFO] Starting AI server setup (Gunicorn launch)...")
+try:
+    models_loaded = load_ai_cores()
+    if models_loaded:
+        print("[SUCCESS] AI Core Initialization Complete.")
+    else:
+        print("[WARNING] Not all models loaded. Server will run with limited functionality.")
+except Exception as e:
+    print(f"[FATAL ERROR] Critical failure during initial model loading: {e}")
+    sys.exit(1)
+
+
+# --- Middlewares and Routes ---
+
 # =======================================================
 # 📝 المسار الأول: توليد النصوص (بدون قيود)
 # =======================================================
@@ -325,7 +344,7 @@ def generate_image_unrestricted():
             if not hasattr(sd_pipeline, attr):
                 raise RuntimeError(f"نموذج توليد الصور غير مكتمل: مفقود {attr}")
                 
-        print(f"[DEBUG] نموذج توليد الصور جاهز على الجهاز: {sd_pipeline.device}")
+        print(f"[DEBUG] نموذج توليد الصور جاهز على الجهاز: {getattr(sd_pipeline, 'device', 'unknown')}")
         
     except Exception as e:
         error_msg = f"فشل التحقق من حالة النموذج: {str(e)}"
@@ -365,9 +384,6 @@ def generate_image_unrestricted():
             # Safely get device information
             device = "cuda" if torch.cuda.is_available() else "cpu"
             print(f"[DEBUG] Using device: {device}")
-            print(f"[DEBUG] Prompt: {user_prompt}")
-            print(f"[DEBUG] Pipeline: {sd_pipeline.__class__.__name__}")
-            print(f"[DEBUG] Pipeline device: {getattr(sd_pipeline, 'device', 'unknown')}")
             
             # تعطيل xformers في وضع CPU لتفادي المشاكل
             try:
@@ -395,12 +411,10 @@ def generate_image_unrestricted():
             with torch.no_grad():
                 try:
                     print("[INFO] Starting image generation...")
-                    print(f"[DEBUG] Prompt: {user_prompt}")
-                    print(f"[DEBUG] Steps: {num_inference_steps}, Size: {width}x{height}")
                     
-                    # Generate the image with a simple configuration
                     # ضبط حجم الصورة ليكون مناسبًا للـ CPU
-                    max_size = 512 if torch.cuda.is_available() else 384
+                    # We are in a constrained CPU environment, force small size for safety.
+                    max_size = 512 if torch.cuda.is_available() else 384 
                     gen_width = min(width, max_size)
                     gen_height = min(height, max_size)
                     
@@ -421,8 +435,6 @@ def generate_image_unrestricted():
                         "num_images_per_prompt": 1,
                         "output_type": "pil"
                     }
-                    
-                    print(f"[DEBUG] معلمات التوليد: {generation_kwargs}")
                     
                     # تنفيذ توليد الصورة مع كشف الأخطاء المحسن
                     try:
@@ -502,7 +514,7 @@ def generate_image_unrestricted():
         }), 500
 
 # =======================================================
-# 🚀 تشغيل السيرفر
+# 🚀 مسارات الخدمة
 # =======================================================
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -532,106 +544,3 @@ def home():
         <li>POST /ai/generate_image - Generate images</li>
     </ul>
     """
-
-def cleanup_models():
-    """Clean up model resources properly"""
-    global llama_model, sd_pipeline
-    
-    if llama_model is not None:
-        try:
-            if hasattr(llama_model, '__del__'):
-                llama_model.__del__ = lambda: None  # Prevent double-free
-            llama_model = None
-        except Exception as e:
-            print(f"[WARNING] Error cleaning up text model: {e}")
-    
-    if sd_pipeline is not None:
-        try:
-            sd_pipeline = None
-        except Exception as e:
-            print(f"[WARNING] Error cleaning up image model: {e}")
-
-def start_ngrok(port):
-    """Start ngrok tunnel"""
-    try:
-        # Set ngrok auth token (optional but recommended)
-        # ngrok.set_auth_token("YOUR_NGROK_AUTH_TOKEN")
-        
-        # Start ngrok tunnel
-        public_url = ngrok.connect(port).public_url
-        print("\n" + "="*50)
-        print(f" * Public URL: {public_url}")
-        print(f" * Local URL: http://127.0.0.1:{port}")
-        print(" * Note: The public URL changes each time you restart the server")
-        print("="*50 + "\n")
-        return public_url
-    except Exception as e:
-        print(f"[ERROR] Failed to start ngrok: {str(e)}")
-        print("[INFO] Running in local-only mode (no public URL)")
-        return None
-
-if __name__ == '__main__':
-    import atexit
-    import sys
-    
-    # Register cleanup function
-    atexit.register(cleanup_models)
-    
-    if not YOUR_API_KEY:
-        print("🚨 Warning: 'AI_SERVER_API_KEY' not set in .env.local, using default key")
-    
-    print("\n[INFO] Starting server...")
-    print("[INFO] Loading AI models...")
-    
-    # Load models in the main thread
-    models_loaded = load_ai_cores()
-    
-    if models_loaded:
-        print("[SUCCESS] Text model loaded successfully!")
-    
-    # Show server status
-    print("\n" + "="*50)
-    print("SERVER STATUS")
-    print("="*50)
-    print(f"Text Model: {'✅ Loaded' if llama_model else '❌ Failed'}")
-    print(f"Image Model: {'✅ Loaded' if sd_pipeline else '❌ Not available'}")
-    print("="*50 + "\n")
-    
-    if llama_model is None:
-        print("❌ Error: Failed to load the text model. Server cannot start.")
-        print("Please check the error messages above for details.")
-        sys.exit(1)
-        
-    # Start ngrok in a separate thread
-    port = CONFIG['PORT']
-    ngrok_thread = threading.Thread(target=start_ngrok, args=(port,))
-    ngrok_thread.daemon = True
-    ngrok_thread.start()
-    
-    print(f"\n[INFO] Starting server at http://{CONFIG['HOST']}:{port}")
-    print("[INFO] Waiting a moment for ngrok to initialize...")
-    time.sleep(2)  # Give ngrok a moment to start
-    print("[INFO] Available endpoints:")
-    print(f"  - GET  http://{CONFIG['HOST']}:{CONFIG['PORT']}/health")
-    print(f"  - POST http://{CONFIG['HOST']}:{CONFIG['PORT']}/ai/generate_text")
-    if sd_pipeline:
-        print(f"  - POST http://{CONFIG['HOST']}:{CONFIG['PORT']}/ai/generate_image")
-    else:
-        print("  - Image generation is disabled (model failed to load)")
-    print("\n[INFO] Press CTRL+C to stop the server\n")
-    
-    try:
-        # Force host to '0.0.0.0' to accept connections from all network interfaces
-        app.run(
-            host='0.0.0.0',  # Changed from CONFIG['HOST'] to '0.0.0.0'
-            port=CONFIG['PORT'],
-            debug=False,
-            use_reloader=False,
-            threaded=True
-        )
-    except KeyboardInterrupt:
-        print("\n[INFO] Server is shutting down...")
-    except Exception as e:
-        print(f"\n[ERROR] Failed to start server: {str(e)}")
-    finally:
-        cleanup_models()
