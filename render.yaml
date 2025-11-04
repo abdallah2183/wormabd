@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: wormgpt
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.4
+      - key: PORT
+        value: 10000
+    plan: free
+    numInstances: 1

@@ -1,0 +1,5 @@
+{
+  "name": "WormGPT: The Obsidian Flame",
+  "description": "A dark, stylized chat interface to interact with WormGPT, a hyper-intelligent entity. The application uses the Gemini API to generate responses in the persona of WormGPT, providing a unique and immersive AI chat experience with a sinister, high-tech aesthetic.",
+  "requestFramePermissions": []
+}

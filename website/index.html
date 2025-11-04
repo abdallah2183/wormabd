@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>واجهة اتصال WormGPT</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        input[type="text"], textarea, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            min-height: 100px;
+            background-color: #f9f9f9;
+            white-space: pre-wrap;
+        }
+        .tab {
+            overflow: hidden;
+            border: 1px solid #ccc;
+            background-color: #f1f1f1;
+            border-radius: 4px 4px 0 0;
+        }
+        .tab button {
+            background-color: inherit;
+            float: right;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            padding: 14px 16px;
+            transition: 0.3s;
+            color: #333;
+        }
+        .tab button:hover {
+            background-color: #ddd;
+        }
+        .tab button.active {
+            background-color: #3498db;
+            color: white;
+        }
+        .tabcontent {
+            display: none;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            background-color: white;
+        }
+        .api-info {
+            background-color: #e8f4f8;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>واجهة اتصال WormGPT</h1>
+        
+        <div class="api-info">
+            <h3>معلومات الاتصال بالسيرفر:</h3>
+            <p><strong>نقطة النهاية (Endpoint) للنصوص:</strong> <code>/ai/generate_text</code></p>
+            <p><strong>نقطة النهاية للصور:</strong> <code>/ai/generate_image</code></p>
+            <p><strong>طريقة الطلب:</strong> POST</p>
+            <p><strong>رأس الطلب المطلوب:</strong> <code>X-API-Key: مفتاحك_السري</code></p>
+        </div>
+
+        <div class="tab">
+            <button class="tablinks active" onclick="openTab(event, 'text-tab')">توليد النصوص</button>
+            <button class="tablinks" onclick="openTab(event, 'image-tab')">توليد الصور</button>
+        </div>
+
+        <!-- تبويب توليد النصوص -->
+        <div id="text-tab" class="tabcontent" style="display: block;">
+            <h2>توليد النصوص</h2>
+            <div class="form-group">
+                <label for="api-url-text">رابط السيرفر (Ngrok):</label>
+                <input type="text" id="api-url-text" placeholder="https://your-ngrok-url.ngrok.io">
+                
+                <label for="api-key">مفتاح API السري:</label>
+                <input type="text" id="api-key" placeholder="أدخل المفتاح السري">
+                
+                <label for="prompt">النص المطلوب:</label>
+                <textarea id="prompt" rows="4" placeholder="اكتب سؤالك أو طلبك هنا..."></textarea>
+                
+                <button onclick="generateText()">توليد النص</button>
+            </div>
+            <div class="form-group">
+                <label for="text-result">النتيجة:</label>
+                <div id="text-result" class="result">النتيجة ستظهر هنا...</div>
+            </div>
+        </div>
+
+        <!-- تبويب توليد الصور -->
+        <div id="image-tab" class="tabcontent">
+            <h2>توليد الصور</h2>
+            <div class="form-group">
+                <label for="api-url-image">رابط السيرفر (Ngrok):</label>
+                <input type="text" id="api-url-image" placeholder="https://your-ngrok-url.ngrok.io">
+                
+                <label for="api-key-image">مفتاح API السري:</label>
+                <input type="text" id="api-key-image" placeholder="أدخل المفتاح السري">
+                
+                <label for="image-prompt">وصف الصورة المطلوبة:</label>
+                <textarea id="image-prompt" rows="4" placeholder="صِف الصورة التي تريد إنشاءها..."></textarea>
+                
+                <button onclick="generateImage()">توليد الصورة</button>
+            </div>
+            <div class="form-group">
+                <label for="image-result">النتيجة:</label>
+                <div id="image-result" class="result">الصورة الناتجة ستظهر هنا...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // وظيفة التبديل بين التبويبات
+        function openTab(evt, tabName) {
+            var i, tabcontent, tablinks;
+            
+            tabcontent = document.getElementsByClassName("tabcontent");
+            for (i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].style.display = "none";
+            }
+            
+            tablinks = document.getElementsByClassName("tablinks");
+            for (i = 0; i < tablinks.length; i++) {
+                tablinks[i].className = tablinks[i].className.replace(" active", "");
+            }
+            
+            document.getElementById(tabName).style.display = "block";
+            evt.currentTarget.className += " active";
+        }
+
+        // وظيفة توليد النص
+        async function generateText() {
+            const apiUrl = document.getElementById('api-url-text').value.trim();
+            const apiKey = document.getElementById('api-key').value.trim();
+            const prompt = document.getElementById('prompt').value.trim();
+            const resultDiv = document.getElementById('text-result');
+            
+            if (!apiUrl || !apiKey || !prompt) {
+                resultDiv.textContent = 'الرجاء تعبئة جميع الحقول المطلوبة';
+                return;
+            }
+            
+            resultDiv.textContent = 'جاري التوليد...';
+            
+            try {
+                const response = await fetch(`${apiUrl}/ai/generate_text`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': apiKey
+                    },
+                    body: JSON.stringify({
+                        prompt: prompt
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.textContent = data.output || 'تم التوليد بنجاح ولكن لا توجد نتيجة.';
+                } else {
+                    resultDiv.textContent = `خطأ: ${data.message || 'حدث خطأ غير معروف'}`;
+                }
+            } catch (error) {
+                resultDiv.textContent = `حدث خطأ في الاتصال: ${error.message}`;
+            }
+        }
+
+        // وظيفة توليد الصورة
+        async function generateImage() {
+            const apiUrl = document.getElementById('api-url-image').value.trim();
+            const apiKey = document.getElementById('api-key-image').value.trim();
+            const prompt = document.getElementById('image-prompt').value.trim();
+            const resultDiv = document.getElementById('image-result');
+            
+            if (!apiUrl || !apiKey || !prompt) {
+                resultDiv.textContent = 'الرجاء تعبئة جميع الحقول المطلوبة';
+                return;
+            }
+            
+            resultDiv.innerHTML = 'جاري توليد الصورة...';
+            
+            try {
+                const response = await fetch(`${apiUrl}/ai/generate_image`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': apiKey
+                    },
+                    body: JSON.stringify({
+                        prompt: prompt
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.output) {
+                    resultDiv.innerHTML = `
+                        <p>تم توليد الصورة بنجاح:</p>
+                        <img src="data:image/png;base64,${data.output}" alt="الصورة المولدة" style="max-width: 100%; margin-top: 10px;">
+                    `;
+                } else {
+                    resultDiv.textContent = `خطأ: ${data.message || 'حدث خطأ في توليد الصورة'}`;
+                }
+            } catch (error) {
+                resultDiv.textContent = `حدث خطأ في الاتصال: ${error.message}`;
+            }
+        }
+        
+        // تعبئة حقول API URL تلقائياً
+        document.addEventListener('DOMContentLoaded', function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const apiUrl = urlParams.get('api_url');
+            const apiKey = urlParams.get('api_key');
+            
+            if (apiUrl) {
+                document.getElementById('api-url-text').value = apiUrl;
+                document.getElementById('api-url-image').value = apiUrl;
+            }
+            
+            if (apiKey) {
+                document.getElementById('api-key').value = apiKey;
+                document.getElementById('api-key-image').value = apiKey;
+            }
+        });
+    </script>
+</body>
+</html>

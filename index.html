@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WormGPT: The Obsidian Flame</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        --color-background: #050508;
+        --color-crimson: #ef4444;
+        --color-crimson-dark: #b91c1c;
+        --color-crimson-glow: rgba(239, 68, 68, 0.15);
+        --color-cyan: #22d3ee;
+        --color-cyan-dark: #0e7490;
+        --color-cyan-glow: rgba(34, 211, 238, 0.1);
+        --font-primary: 'Fira Code', monospace;
+      }
+
+      body {
+        font-family: var(--font-primary);
+        background-color: var(--color-background);
+        color: #e5e7eb;
+        background-image:
+          repeating-linear-gradient(rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 100%),
+          repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 100%),
+          radial-gradient(ellipse at center, rgba(10,10,12,0.8) 0%, var(--color-background) 100%);
+        background-size: 2rem 2rem, 2rem 2rem, 100% 100%;
+        overflow: hidden;
+      }
+
+      .text-gradient-crimson {
+        background: linear-gradient(to right, #ef4444, #f87171);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+
+      .clip-corner {
+        clip-path: polygon(0% 10px, 10px 0%, calc(100% - 10px) 0%, 100% 10px, 100% calc(100% - 10px), calc(100% - 10px) 100%, 10px 100%, 0% calc(100% - 10px));
+      }
+
+      @keyframes text-glitch {
+        2%, 64% { transform: translate(1px, -1px) skew(0deg); opacity: 0.8; }
+        4%, 60% { transform: translate(-1px, 1px) skew(0deg); }
+        62% { transform: translate(0, 0) skew(2deg); }
+      }
+      .animate-text-glitch {
+        animation: text-glitch 1s cubic-bezier(.25,.46,.45,.94) both infinite;
+        display: inline-block;
+      }
+
+      /* For syntax highlighting */
+      pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5px}.hljs{color:#abb2bf;background:#1a1d23}.hljs-comment,.hljs-quote{color:#5c6370;font-style:italic}.hljs-doctag,.hljs-formula,.hljs-keyword{color:#c678dd}.hljs-deletion,.hljs-name,.hljs-section,.hljs-selector-tag,.hljs-subst{color:#e06c75}.hljs-literal{color:#56b6c2}.hljs-addition,.hljs-attribute,.hljs-meta .hljs-string,.hljs-regexp,.hljs-string{color:#98c379}.hljs-attr,.hljs-number,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-pseudo,.hljs-template-variable,.hljs-type,.hljs-variable{color:#d19a66}.hljs-bullet,.hljs-link,.hljs-meta,.hljs-selector-id,.hljs-symbol,.hljs-title{color:#61afef}.hljs-built_in,.hljs-class .hljs-title,.hljs-title.class_{color:#e6c07b}.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}.hljs-link{text-decoration:underline}
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.28.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
