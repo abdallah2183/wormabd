@@ -2,11 +2,27 @@ flask>=2.0.1
 python-dotenv>=0.19.0
 llama-cpp-python>=0.2.0
 diffusers>=0.24.0
-torch>=2.0.0
-transformers>=4.30.0
+torch==2.3.0
+transformers==4.30.2
 accelerate>=0.20.0
 safetensors>=0.3.1
 requests>=2.28.0
 pillow>=9.0.0
 numpy>=1.24.0   
 gunicorn>=22.0.0
+```eof
+
+---
+
+### 🚀 الخطوات المطلوبة الآن
+
+1.  **عدّل `requirements.txt`:** قم بنسخ المحتوى أعلاه بالكامل ولصقه في ملف **`requirements.txt`** على جهازك، واستبدل كل ما فيه.
+2.  **الرفع النهائي:** قم برفع التغييرات إلى GitHub لبدء عملية النشر النهائية:
+
+    ```bash
+    git add requirements.txt
+    git commit -m "Fix: Locked torch and transformers versions to resolve pytree error (Final attempt)."
+    git push origin main
+    ```
+
+**إذا نجح الرفع، راقب سجلات Render. يجب أن ينجح البناء هذه المرة!**
