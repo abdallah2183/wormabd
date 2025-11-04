@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 import threading
 import time
 import secrets # Import secrets for image file naming
+from huggingface_hub import hf_hub_download # <-- NEW IMPORT
 
 # Force CPU usage and disable CUDA
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
@@ -32,12 +33,20 @@ logging.getLogger('transformers').setLevel(logging.WARNING)
 # Load environment variables
 load_dotenv()
 
+# =======================================================
+# 📌 إعدادات النماذج على Hugging Face Hub (يجب تعديلها!)
+# =======================================================
+# الرجاء تغيير هذا المتغير ليطابق اسم المستخدم واسم المستودع على Hugging Face
+HF_REPO_ID = os.environ.get("HF_REPO_ID", "YourName/YourModelRepo") # <--- عدّل هذا!
+# =======================================================
+
 # Configuration
 CONFIG = {
     'HOST': '127.0.0.1',
     'PORT': 5000,
     'API_KEYS': [os.getenv('AI_SERVER_API_KEY', 'My_Website_Secure_Key_123456')],
-    'MODEL_PATHS': {
+    # المسارات هنا ستكون مسارات مؤقتة يتم تحديثها بعد التحميل من Hugging Face
+    'MODEL_PATHS': { 
         'text': 'model_files/dolphin-2.9-llama3-8b-q8_0.gguf',
         'image': 'model_files/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors'
     },
@@ -48,7 +57,7 @@ CONFIG = {
 
 # Initialize Flask app (Single initialization, use 'app' variable)
 app = Flask(__name__)
-app.config['JSON_AS_ASCII'] = False  # For proper Arabic text support
+app.config['JSON_AS_ASCII'] = False # For proper Arabic text support
 
 # Load environment variables
 YOUR_API_KEY = os.getenv('AI_SERVER_API_KEY', 'My_Website_Secure_Key_123456')
@@ -61,8 +70,8 @@ if sys.platform == 'win32':
 llama_model = None
 sd_pipeline = None
 
-# Ensure model directory exists
-os.makedirs('model_files', exist_ok=True)
+# Ensure model directory exists (No longer needed since we use cache)
+# os.makedirs('model_files', exist_ok=True) 
 
 # Disable gradient calculation for inference
 torch.set_grad_enabled(False)
@@ -84,22 +93,13 @@ except ImportError as e:
 load_dotenv(".env")
 
 # --- متغيرات السرية والمسارات ---
+# المسارات التالية لم تعد تستخدم للتحميل، بل تستخدم كمعرفات للملفات فقط
 YOUR_API_KEY = os.environ.get("AI_SERVER_API_KEY")
-MODEL_PATH = os.environ.get("MODEL_PATH", "model_files")
-TEXT_MODEL = os.environ.get("TEXT_MODEL", "dolphin-2.9-llama3-8b-q8_0.gguf")
-IMAGE_MODEL = os.environ.get("IMAGE_MODEL", "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors")
+TEXT_MODEL_FILENAME = os.environ.get("TEXT_MODEL", "dolphin-2.9-llama3-8b-q8_0.gguf")
+IMAGE_MODEL_FILENAME = os.environ.get("IMAGE_MODEL", "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors")
 
-D_MODEL_PATH = os.path.join(MODEL_PATH, TEXT_MODEL)
-J_MODEL_PATH = os.path.join(MODEL_PATH, IMAGE_MODEL)
-
-# التأكد من وجود الملفات المطلوبة
-if not os.path.exists(D_MODEL_PATH):
-    print(f"❌ خطأ: ملف النموذج النصي غير موجود في المسار: {D_MODEL_PATH}")
-    print("الرجاء التأكد من تحميل النموذج النصي في المجلد المحدد.")
-    
-if not os.path.exists(J_MODEL_PATH):
-    print(f"❌ خطأ: ملف نموذج الصور غير موجود في المسار: {J_MODEL_PATH}")
-    print("الرجاء التأكد من تحميل نموذج الصور في المجلد المحدد.")
+# تم حذف مسارات التحقق المحلية
+# if not os.path.exists(D_MODEL_PATH): ...
 
 # --- دالة المصادقة (الحارس) ---
 def authenticate_request():
@@ -129,7 +129,7 @@ def cleanup_models():
             sd_pipeline = None
             # Aggressively clear PyTorch cache if possible
             if torch.cuda.is_available():
-                 torch.cuda.empty_cache()
+                torch.cuda.empty_cache()
         except Exception as e:
             print(f"[WARNING] Error cleaning up image model: {e}")
 
@@ -146,79 +146,118 @@ def load_ai_cores():
     
     print(f"\n{'='*50}")
     print(f"WORMGPT Server - Running on {DEVICE.upper()}")
-    print(f"Model Paths: {json.dumps(CONFIG['MODEL_PATHS'], indent=2)}")
+    print(f"Hugging Face Repo ID: {HF_REPO_ID}")
     print(f"{'='*50}\n")
     
-    # Load text generation model
+    # =============================================
+    # ⬇️ التحميل من Hugging Face Hub (للنموذج النصي)
+    # =============================================
+    text_model_local_path = None
     try:
-        from llama_cpp import Llama
-        print("\n[TEXT] Loading language model...")
-        llama_model = Llama(
-            model_path=CONFIG['MODEL_PATHS']['text'],
-            n_ctx=4096,
-            n_threads=os.cpu_count() // 2,
-            verbose=False,
-            n_gpu_layers=0  # Force CPU
+        print(f"[TEXT] Downloading {TEXT_MODEL_FILENAME} from Hugging Face...")
+        text_model_local_path = hf_hub_download(
+            repo_id=HF_REPO_ID,
+            filename=TEXT_MODEL_FILENAME,
+            revision="main", # يمكن تغييرها إذا كان نموذجك على فرع آخر
+            cache_dir="./hf_cache" # مسار للتخزين المؤقت
         )
-        print("[TEXT] ✅ Model loaded successfully!")
+        CONFIG['MODEL_PATHS']['text'] = text_model_local_path # تحديث المسار للقراءة من القرص
+        print(f"[TEXT] ✅ Model downloaded successfully to: {text_model_local_path}")
     except Exception as e:
-        print(f"[ERROR] ❌ Failed to load text model: {str(e)}")
+        print(f"[ERROR] ❌ Failed to download text model from Hugging Face: {str(e)}")
         models_loaded = False
-    
-    # Load image generation model (optional)
+        
+    # =============================================
+    # ⬇️ التحميل من Hugging Face Hub (لنموذج الصور)
+    # =============================================
+    image_model_local_path = None
     try:
-        print("\n[IMAGE] Loading image generation model...")
-        
-        # Skip image model loading if file doesn't exist
-        if not os.path.exists(CONFIG['MODEL_PATHS']['image']):
-            print(f"[IMAGE] ⚠️  Model file not found at: {CONFIG['MODEL_PATHS']['image']}")
-            print("[IMAGE] ℹ️  Image generation will be disabled")
-            return models_loaded
-            
-        # Configure model loading
-        load_kwargs = {
-            'torch_dtype': torch.float32,
-            'safety_checker': None,
-            'requires_safety_checker': False,
-            'local_files_only': True,
-            'use_safetensors': True,
-            'variant': 'fp32',
-        }
-        
-        # Load the model on CPU
-        with torch.device('cpu'):
-            # Force CPU even if CUDA is detected
-            torch.cuda.is_available = lambda: False
-            sd_pipeline = StableDiffusionXLPipeline.from_single_file(
-                CONFIG['MODEL_PATHS']['image'],
-                torch_dtype=torch.float32,
-                safety_checker=None,
-                requires_safety_checker=False,
-                local_files_only=True,
-                use_safetensors=True,
-                variant='fp32'
-            ).to('cpu')
-            
-            # Test the model with a simple prompt
-            print("[IMAGE] Testing model with simple prompt...")
-            with torch.no_grad():
-                # Reduce test size to prevent memory crash during startup
-                test_output = sd_pipeline(
-                    prompt="test",
-                    num_inference_steps=1,
-                    width=64,
-                    height=64,
-                    output_type="pil",
-                    generator=torch.Generator(device=DEVICE)
-                )
-            
-            print("[IMAGE] ✅ Model loaded and tested successfully!")
-            
+        print(f"\n[IMAGE] Downloading {IMAGE_MODEL_FILENAME} from Hugging Face...")
+        image_model_local_path = hf_hub_download(
+            repo_id=HF_REPO_ID,
+            filename=IMAGE_MODEL_FILENAME,
+            revision="main",
+            cache_dir="./hf_cache"
+        )
+        CONFIG['MODEL_PATHS']['image'] = image_model_local_path # تحديث المسار
+        print(f"[IMAGE] ✅ Model downloaded successfully to: {image_model_local_path}")
     except Exception as e:
-        print(f"[ERROR] ❌ Failed to load image model: {str(e)}")
-        print("[IMAGE] ℹ️  Image generation will be disabled")
-        import traceback
-        traceback.print_exc()
+        print(f"[ERROR] ❌ Failed to download image model from Hugging Face: {str(e)}")
+        # السماح للخادم بالاستمرار بدون نموذج الصور
+    
+    # Load text generation model
+    if text_model_local_path:
+        try:
+            from llama_cpp import Llama
+            print("\n[TEXT] Loading language model...")
+            llama_model = Llama(
+                model_path=CONFIG['MODEL_PATHS']['text'],
+                n_ctx=4096,
+                n_threads=os.cpu_count() // 2,
+                verbose=False,
+                n_gpu_layers=0 # Force CPU
+            )
+            print("[TEXT] ✅ Model loaded successfully!")
+        except Exception as e:
+            print(f"[ERROR] ❌ Failed to load text model: {str(e)}")
+            models_loaded = False
+    else:
+        print("[TEXT] ℹ️ Skipping text model loading due to prior download failure.")
+        models_loaded = False
+        
+    # Load image generation model (optional)
+    if image_model_local_path:
+        try:
+            print("\n[IMAGE] Loading image generation model...")
+            
+            # Configure model loading
+            load_kwargs = {
+                'torch_dtype': torch.float32,
+                'safety_checker': None,
+                'requires_safety_checker': False,
+                # local_files_only=True remains, but now points to the downloaded cache path
+                'local_files_only': True, 
+                'use_safetensors': True,
+                'variant': 'fp32',
+            }
+            
+            # Load the model on CPU
+            with torch.device('cpu'):
+                # Force CPU even if CUDA is detected
+                torch.cuda.is_available = lambda: False
+                sd_pipeline = StableDiffusionXLPipeline.from_single_file(
+                    CONFIG['MODEL_PATHS']['image'],
+                    torch_dtype=torch.float32,
+                    safety_checker=None,
+                    requires_safety_checker=False,
+                    local_files_only=True,
+                    use_safetensors=True,
+                    variant='fp32'
+                ).to('cpu')
+                
+                # Test the model with a simple prompt
+                print("[IMAGE] Testing model with simple prompt...")
+                with torch.no_grad():
+                    # Reduce test size to prevent memory crash during startup
+                    test_output = sd_pipeline(
+                        prompt="test",
+                        num_inference_steps=1,
+                        width=64,
+                        height=64,
+                        output_type="pil",
+                        generator=torch.Generator(device=DEVICE)
+                    )
+                
+                print("[IMAGE] ✅ Model loaded and tested successfully!")
+                
+        except Exception as e:
+            print(f"[ERROR] ❌ Failed to load image model: {str(e)}")
+            print("[IMAGE] ℹ️  Image generation will be disabled")
+            import traceback
+            traceback.print_exc()
+            sd_pipeline = None
+    else:
+        print("[IMAGE] ℹ️ Skipping image model loading due to prior download failure.")
         sd_pipeline = None
     
     return models_loaded
@@ -238,7 +277,7 @@ except Exception as e:
     sys.exit(1)
 
 
-# --- Middlewares and Routes ---
+# --- Middlewares and Routes (Rest of the code remains the same) ---
 
 # =======================================================
 # 📝 المسار الأول: توليد النصوص (بدون قيود)
